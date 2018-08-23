@@ -1,0 +1,16 @@
+# ignore image data
+data/
+*.png
+
+# ignore parameter files
+params/
+*.params
+
+# ignore font files
+font/
+*.TTF
+*.ttf
+*.TTC
+*.ttc
+
+*.pyc
