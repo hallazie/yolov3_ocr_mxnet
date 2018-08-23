@@ -13,5 +13,5 @@ font/
 *.TTC
 *.ttc
 
-.pyc
-.txt
+*.pyc
+*.txt
