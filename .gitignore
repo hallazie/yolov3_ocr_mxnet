@@ -13,5 +13,9 @@ font/
 *.TTC
 *.ttc
 
+# ignore all gen source
+sample/
+pool/
+
 *.pyc
 *.txt
