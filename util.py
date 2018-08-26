@@ -58,7 +58,7 @@ def label_2_bbox(raw_shape, input_shape, label, anchors, num_class, min_down_sca
 		for x in range(cur_shape[0]):
 			for y in range(cur_shape[1]):
 				for anchors in range(3):
-					if label[layer][x,y,anchors,4] > 0:
+					if label[layer][x,y,anchors,4] > THRESHOLD:
 						x0, y0 ,x1, y1 = label[layer][x,y,anchors,0:4]
 						x0, y0 ,x1, y1 = round(x0*w_ratio), round(y0*h_ratio) ,round(x1*w_ratio), round(y1*h_ratio)
 						idx = list(label[layer][x,y,anchors,5:]).index(1.)
@@ -104,11 +104,22 @@ def bbox_2_label(raw_shape, input_shape, bbox_json, anchors, num_class, min_down
 		sum_row += label[cur_max_l][cur_max_x, cur_max_y, cur_max_a]
 	return label
 
+def label_flatten(input_arr, output_shape):
+	ttl = 0
+	for out in output_shape:
+		ttl += out[0]*out[1]*out[2]
+	flatten = np.zeros((ttl, output_shape[0][3]))
+	head = 0
+	for i, out in enumerate(output_shape):
+		flatten[head:head+out[0]*out[1]*out[2]] = input_arr[i].reshape((out[0]*out[1]*out[2], out[3]))
+		head += out[0]*out[1]*out[2]
+	return flatten
+
 if __name__ == '__main__':
 	with open('data/jsons/0.json', 'r') as jf:
 		bj = json.load(jf)
 	anchors = gen_anchor_from_cluster()
 	res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchors=anchors, num_class=28, min_down_scale=8, stride_down_scale=2)
 	box = label_2_bbox(raw_shape=(1498,955), input_shape=(640,480), label=res, anchors=anchors, num_class=28, min_down_scale=8, stride_down_scale=2)
-	with open('data/tmp.json', 'w') as jf:
-		json.dump(box, jf)
+	flt = label_flatten(res, [[80,60,3,33], [40,30,3,33], [20,15,3,33]])
+	print flt.sum(axis=0)
