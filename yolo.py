@@ -1,6 +1,13 @@
 #coding:utf-8
 
 import mxnet as mx
+import numpy as np
+import dataiter
+
+from config import *
+
+model_prefix = 'params/yolo'
+ctx = mx.gpu(0)
 
 def res_block(data, num_filter, kernel=(3,3), stride=(1,1), pad=(1,1), act='leaky', down=2):
 	c1 = conv_block(data, num_filter, kernel, stride, pad, act)
@@ -21,48 +28,49 @@ def pool_block(data, stride=(2,2), kernel=(2,2), pool_type='max'):
 	return mx.symbol.Pooling(data=data, stride=stride, kernel=kernel, pool_type=pool_type)
 
 def confidence_mask(data, threshold):
-	mask data[:,:,4] > threshold
-	return data*mask
-
-# C++ code for calculating the gradient for backpropagation
-# float delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i, int j, int lw, int lh, int w, int h, float *delta, float scale, int stride)
-# {
-#     box pred = get_yolo_box(x, biases, n, index, i, j, lw, lh, w, h, stride);
-#     float iou = box_iou(pred, truth);
-
-#     float tx = (truth.x*lw - i);
-#     float ty = (truth.y*lh - j);
-#     float tw = log(truth.w*w / biases[2*n]);
-#     float th = log(truth.h*h / biases[2*n + 1]);
-
-#     delta[index + 0*stride] = scale * (tx - x[index + 0*stride]);
-#     delta[index + 1*stride] = scale * (ty - x[index + 1*stride]);
-#     delta[index + 2*stride] = scale * (tw - x[index + 2*stride]);
-#     delta[index + 3*stride] = scale * (th - x[index + 3*stride]);
-#     return iou;
-# }
+	# mask = data[:,:,4]>threshold
+	# return data*mask
+	return data
 
 def net():
 	# 640*480
 	data = mx.symbol.Variable('data')
+	label = mx.symbol.Variable('label')
 	c1 = conv_block(data, 32)
-	p1 = pool_block(c1)				#320
-	c2 = conv_block(p1, 64)
-	p2 = pool_block(c2)				# 160
+	# p1 = pool_block(c1)
+	c2 = conv_block(c1, 64)
+	p2 = pool_block(c2)				# 320
 	r3 = res_block(p2, 128)
 	r4 = res_block(r3, 128)
-	p4 = pool_block(r4+p2)			# 80
+	p4 = pool_block(r4)			# 160
 	r5 = res_block(p4, 192)
-	r6 = res_block(p5, 192)
-	r7 = res_block(p6, 192)
-	p7 = pool_block(r7+p4)			# 40, scale1
+	r6 = res_block(r5, 192)
+	r7 = res_block(r6, 192)
+	p7 = pool_block(r7)			# 80
 	r8 = res_block(p7, 256)
 	r9 = res_block(r8, 253)
-	p9 = pool_block(r9+p7)			# 20, scale2
+	p9 = pool_block(r9)			# 40, scale2
 	r10 = res_block(p9, 384)
 	r11 = res_block(r10, 384)
-	p11 = pool_block(r11+p9)		# 10, scale3
-	o1 = confidence_mask(conv_block(p7, num_filter=99, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='linear'))
-	o2 = confidence_mask(conv_block(p9, num_filter=99, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='linear'))
-	o3 = confidence_mask(conv_block(p11, num_filter=99, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='linear'))
+	msk = confidence_mask(conv_block(r11, num_filter=33, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='relu'), 0.8)
+	return mx.symbol.LinearRegressionOutput(data=msk, label=label)
 	
+def train():
+	symbol = net()
+	# diter = dataiter.diter()
+	diter = mx.io.NDArrayIter(data=np.zeros((1,WIDTH,HEIGHT,3)), label=np.zeros((1,WIDTH//DOWNSAMPLE,HEIGHT//DOWNSAMPLE,33)), batch_size=1, shuffle=True)
+	model = mx.mod.Module(symbol=symbol, context=ctx, data_names=('data',), label_names=('label',))
+	model.bind(data_shapes=diter.provide_data, label_shapes=diter.provide_label)
+	model.init_params(initializer=mx.init.Uniform(scale=.1))
+	model.fit(
+		diter,
+		optimizer = 'adam',
+		optimizer_params = {'learning_rate':0.0005},
+		eval_metric = 'mse',
+		batch_end_callback = mx.callback.Speedometer(BATCH_SIZE, 1),
+		epoch_end_callback = mx.callback.do_checkpoint(model_prefix, 1),
+		num_epoch = 200,
+		)
+
+if __name__ == '__main__':
+	train()

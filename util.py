@@ -58,7 +58,7 @@ def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale):
 				xt, yt, wt, ht = label[x,y,0:4]
 				xt, yt, wt, ht = sigmoid(x0)+x*downscale, sigmoid(y0)+y*downscale, e**w0, e**h0
 				idx = list(label[x,y,5:]).index(1.)
-				bbox[bbox_dict_reverse[idx]] = [[x0,y0],[x1,y1]]
+				bbox[BBOX_DICT_REVERSE[idx]] = [[x0,y0],[x1,y1]]
 	return bbox
 
 def label_transfer(raw_shape, input_shape, label, anchor, downscale):
@@ -73,7 +73,7 @@ def label_transfer(raw_shape, input_shape, label, anchor, downscale):
 				xc, yc = (xt+x)*downscale, (yt+y)*downscale
 				x0, y0, x1, y1 = xc-wa/2, yc-ha/2, xc+wa/2, yc+ha/2
 				label[x,y,:4] = np.array([x0, y0, x1, y1])
-				print label[x,y]
+	return label
 
 def bbox_2_label(raw_shape, input_shape, bbox_json, anchor, num_class, downscale):
 	'''
@@ -84,8 +84,8 @@ def bbox_2_label(raw_shape, input_shape, bbox_json, anchor, num_class, downscale
 	sum_row = np.array([0 for i in range(num_class+5)], dtype='float64')
 	w_ratio, h_ratio = float(input_shape[0])/raw_shape[0], float(input_shape[1])/raw_shape[1]
 	anchor = (anchor[0]*w_ratio, anchor[1]*h_ratio)
-	for bk in bbox_json:
-		class_idx = bbox_dict[bk]
+	for bk in BBOX_KEY_LIST:
+		class_idx = BBOX_DICT[bk]
 		bbox = bbox_json[bk]
 		bbox = ((bbox[0][0]*w_ratio, bbox[0][1]*h_ratio), (bbox[1][0]*w_ratio, bbox[1][1]*h_ratio))
 		cur_max_iou, cur_max_x, cur_max_y, same_count = 0, 0, 0, 0
@@ -131,7 +131,10 @@ if __name__ == '__main__':
 	with open('data/jsons/0.json', 'r') as jf:
 		bj = json.load(jf)
 	anchor = gav_anchor()
-	res = bbox_2_label(raw_shape=(1498,955), input_shape=(320,240), bbox_json=bj, anchor=anchor, num_class=28, downscale=8)
+	res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchor=anchor, num_class=28, downscale=16)
+	print res.shape
+	print res.reshape((40*30, 33)).sum(axis=0)
 	print '-------------------------------------------------------'
-	ret = label_transfer(raw_shape=(1498,955), input_shape=(320,240), label=res, anchor=anchor, downscale=8)
+	# ret = label_transfer(raw_shape=(1498,955), input_shape=(320,240), label=res, anchor=anchor, downscale=8)
+
 
