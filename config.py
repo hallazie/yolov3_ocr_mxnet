@@ -6,8 +6,8 @@ BBOX_DICT = {'equip_seq':0, 'code':1, 'num':2, 'date':3, 'checkcode':4, 'buyer_n
 		'sell_name':21, 'sell_tax_seq':22, 'sell_addr_phone':23, 'sell_bank_phone':24, 'receip':25, 'recheck':26, 'grant':27}
 BBOX_KEY_LIST = sorted(BBOX_DICT.keys())
 BBOX_DICT_REVERSE = {v:k for k,v in zip(BBOX_DICT.keys(), BBOX_DICT.values())}
-THRESHOLD = 0.8
+THRESHOLD = 0.5
 WIDTH = 320
-HEIGHT = 160
-DOWNSAMPLE = 32
-BATCH_SIZE = 2
+HEIGHT = 240
+DOWNSAMPLE = 16
+BATCH_SIZE = 4

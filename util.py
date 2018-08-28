@@ -25,6 +25,19 @@ def calculate_iou(vec1, vec2):
 	intersec = area(((x0,y0), (x1,y1)))
 	return intersec / float(area(vec1)+area(vec2)-intersec)
 
+def sigmoid(x):
+	return 1/(1+e**(-1*x))
+
+def rect(pannel, bbox, outline=(224,32,128)):
+	draw = ImageDraw.Draw(pannel)
+	w, h = pannel.size
+	for kv in bbox:
+		pos0, pos1 = bbox[kv]
+		x0, y0, x1, y1 = pos0[0], pos0[1], pos1[0], pos1[1]
+		x0, y0, x1, y1 = x0*(w//WIDTH), y0*(h//HEIGHT), x1*(w//WIDTH), y1*(h//HEIGHT)
+		draw.polygon([(x0,y0),(x1,y0),(x1,y1),(x0,y1)], outline=outline)
+	return pannel
+
 def gav_anchor():
 	coords = []
 	for _,_,fs in os.walk(json_path):
@@ -49,19 +62,26 @@ def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale):
 		with on global average anchor things could be much easier..
 		x, y, w, h in network to x0, y0, x1, y1 associated to raw input size
 	'''
-	w_ratio, h_ratio = float(raw_shape[0])/input_shape[0], float(raw_shape[1])/input_shape[1]
-	grid_shape = (input_shape[0]//downscale, input_shape[1]/downscale)	# [array([80, 60]), array([40, 30]), array([20, 15])]
+	w_ratio, h_ratio = float(input_shape[0])/raw_shape[0], float(input_shape[1])/raw_shape[1]
+	anchor = (anchor[0]*w_ratio, anchor[1]*h_ratio)
+	jitter = 1e-7
 	bbox = {}
-	for x in range(cur_shape[0]):
-		for y in range(cur_shape[1]):
+	for x in range(input_shape[0]//downscale):
+		for y in range(input_shape[1]//downscale):
+			xt, yt, wt, ht = label[x,y,:4]+jitter
 			if label[x,y,4] > THRESHOLD:
-				xt, yt, wt, ht = label[x,y,0:4]
-				xt, yt, wt, ht = sigmoid(x0)+x*downscale, sigmoid(y0)+y*downscale, e**w0, e**h0
-				idx = list(label[x,y,5:]).index(1.)
+				offx, offy = (abs(wt)/wt)*math.e**abs(wt), (abs(ht)/ht)*math.e**abs(ht)
+				wa, ha = anchor[0]+offx*2, anchor[1]+offy*2
+				xc, yc = (xt+x)*downscale, (yt+y)*downscale
+				x0, y0, x1, y1 = xc-wa/2, yc-ha/2, xc+wa/2, yc+ha/2
+				idx = list(label[x,y,5:]).index(max(label[x,y,5:]))
 				bbox[BBOX_DICT_REVERSE[idx]] = [[x0,y0],[x1,y1]]
 	return bbox
 
 def label_transfer(raw_shape, input_shape, label, anchor, downscale):
+	'''
+		from logged xc, yc, wt, ht to topleft and bottomright x0,y0, x1,y1
+	'''
 	w_ratio, h_ratio = float(input_shape[0])/raw_shape[0], float(input_shape[1])/raw_shape[1]
 	anchor = (anchor[0]*w_ratio, anchor[1]*h_ratio)
 	for x in range(label.shape[0]):
@@ -128,13 +148,14 @@ def label_flatten(input_arr, output_shape):
 	return flatten
 
 if __name__ == '__main__':
-	with open('data/jsons/0.json', 'r') as jf:
-		bj = json.load(jf)
-	anchor = gav_anchor()
-	res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchor=anchor, num_class=28, downscale=16)
-	print res.shape
-	print res.reshape((40*30, 33)).sum(axis=0)
-	print '-------------------------------------------------------'
+	# with open('data/jsons/0.json', 'r') as jf:
+	# 	bj = json.load(jf)
+	# anchor = gav_anchor()
+	# res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchor=anchor, num_class=28, downscale=16)
+	# print res.shape
+	# print res.reshape((40*30, 33)).sum(axis=0)
+	# print '-------------------------------------------------------'
 	# ret = label_transfer(raw_shape=(1498,955), input_shape=(320,240), label=res, anchor=anchor, downscale=8)
-
-
+	thresh_np = np.zeros((2, 10, 4, 5))
+	thresh_np[:,1,:,:] = 0.5
+	print thresh_np[0]

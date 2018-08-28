@@ -15,7 +15,7 @@ def diter():
 	anchor = util.gav_anchor()
 	for _,_, fs in os.walk(data_path):
 		data = np.zeros((len(fs), WIDTH, HEIGHT, 3))
-		label = np.zeros((len(fs), WIDTH//16, HEIGHT//16, 33))
+		label = np.zeros((len(fs), WIDTH//DOWNSAMPLE, HEIGHT//DOWNSAMPLE, 33))
 		for i, f in enumerate(fs):
 			img = Image.open(data_path+f).resize((WIDTH, HEIGHT), resample=Image.LANCZOS)
 			with open(label_path+f.split('.')[0]+'.json', 'r') as lj:
