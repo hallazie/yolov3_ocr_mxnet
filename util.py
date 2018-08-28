@@ -57,7 +57,7 @@ def output_process():
 	'''
 	pass
 
-def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale):
+def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale, threshold=0.5):
 	'''
 		with on global average anchor things could be much easier..
 		x, y, w, h in network to x0, y0, x1, y1 associated to raw input size
@@ -69,7 +69,7 @@ def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale):
 	for x in range(input_shape[0]//downscale):
 		for y in range(input_shape[1]//downscale):
 			xt, yt, wt, ht = label[x,y,:4]+jitter
-			if label[x,y,4] > THRESHOLD:
+			if label[x,y,4] > threshold:
 				offx, offy = (abs(wt)/wt)*math.e**abs(wt), (abs(ht)/ht)*math.e**abs(ht)
 				wa, ha = anchor[0]+offx*2, anchor[1]+offy*2
 				xc, yc = (xt+x)*downscale, (yt+y)*downscale
