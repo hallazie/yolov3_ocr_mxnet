@@ -5,6 +5,7 @@ import numpy as np
 import logging
 import json
 import os
+import random
 import util
 
 from config import *
@@ -14,6 +15,7 @@ from collections import namedtuple
 logging.getLogger().setLevel(logging.DEBUG)
 
 model_prefix = 'params/yolo'
+tune_prefix = 'params/yolo-tune'
 ctx = mx.gpu(0)
 Batch = namedtuple('Batch', ['data'])
 
@@ -25,7 +27,8 @@ def diter(train=False):
 	anchor = util.gav_anchor()
 	if train == True:
 		for _,_, fs in os.walk(data_path):
-			fs = sorted(fs)[:2]
+			fs = ['0.png']
+			# random.shuffle(fs)
 			data = np.zeros((len(fs), 3, WIDTH, HEIGHT))
 			label = np.zeros((len(fs), 33, WIDTH//DOWNSAMPLE, HEIGHT//DOWNSAMPLE))
 			for i, f in enumerate(fs):
@@ -96,37 +99,23 @@ def net(train):
 	# 640*480
 	data = mx.symbol.Variable('data')
 	label = mx.symbol.Variable('softmax_label')
-	# c1 = conv_block(data, 32)
-	# # p1 = pool_block(c1)				
-	# c2 = conv_block(c1, 64)
-	# p2 = pool_block(c2)
-	# r3 = res_block(p2, 128)
-	# r4 = res_block(r3, 128)
-	# p4 = pool_block(r4)
-	# r5 = res_block(p4, 256)
-	# r6 = res_block(r5, 256)
-	# r7 = res_block(r6, 256)
-	# d7 = mx.symbol.Dropout(r7, p=0.2)
-	# p7 = pool_block(d7)
-	# r8 = res_block(p7, 512)
-	# r9 = res_block(r8, 512)
 	c1 = conv_block(data, 32)
-	c2 = conv_block(c1, 64)
+	p1 = pool_block(c1)
+	c2 = conv_block(p1, 64)
 	p2 = pool_block(c2)
 	c3 = conv_block(p2, 128)
 	c4 = conv_block(c3, 128)
-	p4 = pool_block(c4)
+	p4 = pool_block(c4+c3)
 	c5 = conv_block(p4, 256)
 	c6 = conv_block(c5, 256)
 	c7 = conv_block(c6, 256)
-	p7 = pool_block(c7)
-	c8 = conv_block(p7, 512)
-	c9 = conv_block(c8, 512)
+	p7 = pool_block(c7+c5)
+	c8 = conv_block(p7, 384)
+	c9 = conv_block(c8, 384)
 	# d9 = mx.symbol.Dropout(r9, p=0.2)
-	c12 = conv_block(c9, num_filter=33, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='none')
+	c12 = conv_block(c9+c8, num_filter=33, kernel=(1,1), stride=(1,1), pad=(0,0), act_type='none')
 	c13 = diverse_act(c12)
 	msk, rsp_vec = confidence_mask_thresh(c13, THRESHOLD, train)
-
 	if not train:
 		return mx.symbol.Group([msk, rsp_vec])
 
@@ -142,7 +131,7 @@ def net(train):
 	xy_loss = mx.symbol.LogisticRegressionOutput(data=out_xy, label=lbl_xy)
 	wh_loss = mx.symbol.LinearRegressionOutput(data=out_wh, label=lbl_wh)
 	oc_loss = mx.symbol.LogisticRegressionOutput(data=out_oc, label=lbl_oc)
-	cs_loss = mx.symbol.SoftmaxOutput(data=out_cs, label=lbl_cs)
+	cs_loss = mx.symbol.LogisticRegressionOutput(data=out_cs, label=lbl_cs)
 	loss = mx.symbol.concat(xy_loss, wh_loss, oc_loss, cs_loss)
 	return loss
 
@@ -155,12 +144,30 @@ def train():
 	model.fit(
 		dataiter,
 		optimizer = 'adadelta',
-		# optimizer_params = {'learning_rate':0.0005},
+		# optimizer_params = {'learning_rate':0.005},
 		optimizer_params = {'rho':0.9, 'epsilon':1e-7},
 		eval_metric = 'loss',
 		batch_end_callback = mx.callback.Speedometer(BATCH_SIZE, 5),
-		epoch_end_callback = mx.callback.do_checkpoint(model_prefix, 200),
-		num_epoch = 2000,
+		epoch_end_callback = mx.callback.do_checkpoint(model_prefix, 100),
+		num_epoch = 5000,
+	)
+
+def tune():
+	symbol = net(train=True)
+	dataiter = diter(train=True)
+	model = mx.mod.Module(symbol=symbol, context=ctx, data_names=('data',), label_names=('softmax_label',))
+	model.bind(data_shapes=dataiter.provide_data, label_shapes=dataiter.provide_label)
+	_, arg_params, aux_params = mx.model.load_checkpoint(model_prefix, 100)
+	model.set_params(arg_params, aux_params, allow_missing=True)
+	model.fit(
+		dataiter,
+		optimizer = 'adadelta',
+		# optimizer_params = {'learning_rate':0.0001},
+		optimizer_params = {'learning_rate':0.0001,'wd':1e-6,'rho':0.9, 'epsilon':1e-7},
+		eval_metric = 'loss',
+		batch_end_callback = mx.callback.Speedometer(BATCH_SIZE, 5),
+		epoch_end_callback = mx.callback.do_checkpoint(tune_prefix, 1),
+		num_epoch = 100,
 	)
 
 def predict():
@@ -172,26 +179,25 @@ def predict():
 	_, arg_params, aux_params = mx.model.load_checkpoint(model_prefix, 600)
 	arg_params['mask'] = mx.nd.ones((1,1,WIDTH//DOWNSAMPLE,HEIGHT//DOWNSAMPLE))*THRESHOLD
 	model.set_params(arg_params, aux_params, allow_missing=True)
-	raw = Image.open('data/imgs/0.png').convert('RGB')
-	w, h = raw.size
-	img = np.array(raw.resize((WIDTH, HEIGHT), resample=Image.BICUBIC)).transpose().reshape((1,3,WIDTH,HEIGHT))
-	model.forward(Batch([mx.nd.array(img)]))
+	for f in range(1):
+		raw = Image.open('data/imgs/%s.png'%f).convert('RGB')
+		w, h = raw.size
+		img = np.array(raw.resize((WIDTH, HEIGHT), resample=Image.BICUBIC)).transpose().reshape((1,3,WIDTH,HEIGHT))
+		model.forward(Batch([mx.nd.array(img)]))
 
-	# blk = model.get_outputs()[1][0].asnumpy()
-	# for line in blk[0]:
-	# 	print [round(e,3) for e in line]
+		out = model.get_outputs()[0][0].asnumpy().transpose().swapaxes(1,0)
 
-	out = model.get_outputs()[0][0].asnumpy().transpose().swapaxes(1,0)
-	for i in range(30):
-		for j in range(22):
-			if True:
-				print '%s,%s--->%s'%(i,j,[round(e,8) for e in out[i,j,:8]])
-	bbox = util.label_2_bbox(raw_shape=(w,h), input_shape=(WIDTH,HEIGHT), label=out, anchor=anchor, num_class=28, downscale=DOWNSAMPLE, threshold=0.1)
-	for k in bbox:
-		print '%s,%s'%(k,bbox[k])
-	print 'predict finished'
-	raw = util.rect(raw, bbox, outline=(32,128,224))
-	raw.save('data/0.png')
+		for i in range(30):
+			for j in range(22):
+				if True:
+					print '%s,%s--->%s'%(i,j,[round(e,8) for e in out[i,j,:8]])
+
+		bbox = util.label_2_bbox(raw_shape=(w,h), input_shape=(WIDTH,HEIGHT), label=out, anchor=anchor, num_class=28, downscale=DOWNSAMPLE, threshold=0.1)
+		for k in bbox:
+			print '%s,%s'%(k,bbox[k])
+		raw = util.rect(raw, bbox, outline=(32,128,224))
+		raw.save('data/output/%s.png'%f)
+	print 'finished'
 
 if __name__ == '__main__':
 	predict()
