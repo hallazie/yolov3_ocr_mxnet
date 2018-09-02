@@ -68,18 +68,19 @@ def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale, th
 	anchor = (anchor[0]*w_ratio, anchor[1]*h_ratio)
 	jitter = 1e-10
 	bbox = {}
-	# label = label.reshape((input_shape[0]//downscale, input_shape[1]//downscale, 33))
+	label = label.reshape((input_shape[0]//downscale, input_shape[1]//downscale, 33))
+	
 	# for x in range(input_shape[0]//downscale):
 	# 	for y in range(input_shape[1]//downscale):
 	# 		xt, yt, wt, ht = label[x,y,:4]+jitter
-	# 		# if label[x,y,4:] > threshold:
-
+	# 		if label[x,y,4] > THRESHOLD:
 	# 			offx, offy = (abs(wt)//wt)*math.e**abs(wt), (abs(ht)//ht)*math.e**abs(ht)
 	# 			wa, ha = anchor[0]+offx*2, anchor[1]+offy*2
 	# 			xc, yc = (xt+x)*downscale, (yt+y)*downscale
 	# 			x0, y0, x1, y1 = xc-wa/2, yc-ha/2, xc+wa/2, yc+ha/2
 	# 			idx = list(label[x,y,5:]).index(max(label[x,y,5:]))
 	# 			bbox[BBOX_DICT_REVERSE[idx]] = [[x0/w_ratio,y0/h_ratio],[x1/w_ratio,y1/h_ratio]]
+
 	for c in range(num_class):
 		cur_class_mat = label[:,:,c+5]
 		cur_max_coord = np.where(cur_class_mat==np.max(cur_class_mat))
@@ -92,6 +93,7 @@ def label_2_bbox(raw_shape, input_shape, label, anchor, num_class, downscale, th
 		x0, y0, x1, y1 = xc-wa/2, yc-ha/2, xc+wa/2, yc+ha/2
 		idx = list(label[x,y,5:]).index(max(label[x,y,5:]))
 		bbox[BBOX_DICT_REVERSE[idx]] = [[x0/w_ratio,y0/h_ratio],[x1/w_ratio,y1/h_ratio]]
+		
 	return bbox
 
 def label_transfer(raw_shape, input_shape, label, anchor, downscale):
@@ -188,7 +190,7 @@ def diter(train=False):
 				img = img.resize((WIDTH, HEIGHT), resample=Image.BICUBIC)
 				with open(label_path+f.split('.')[0]+'.json', 'r') as lj:
 					bbox = json.load(lj)
-					res = bbox_2_label(raw_shape=raw_size, input_shape=(WIDTH,HEIGHT), bbox_json=bbox, anchor=anchor, num_class=28, downscale=DOWNSAMPLE)
+					res = bbox_2_label(raw_shape=raw_size, input_shape=(WIDTH,HEIGHT), bbox_json=bbox, anchor=anchor, num_class=NUM_CLASS, downscale=DOWNSAMPLE)
 				res = res.reshape(((WIDTH//DOWNSAMPLE)*(HEIGHT//DOWNSAMPLE), 33))
 				for line in res:
 					print [round(e,3) for e in line]
@@ -196,23 +198,13 @@ def diter(train=False):
 			print 'data iter gen finished'
 
 if __name__ == '__main__':
-	# with open('data/jsons/0.json', 'r') as jf:
-	# 	bj = json.load(jf)
-	# anchor = gav_anchor()
-	# res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchor=anchor, num_class=28, downscale=16)
-	# print res.shape
-	# res = res.reshape((40*30, 33))
-	# for e in res:
-	# 	if e[4]>0:
-	# 		print [round(k,3) for k in e]
-	# print '-------------------------------------------------------'
-	# ret = label_2_bbox(raw_shape=(1498,955), input_shape=(640,480), label=res, anchor=anchor, num_class=28, downscale=16)
-	# print ret
-	# diter(True)
-	c = np.array([
-		[1,2,3],
-		[4,3,6],
-		[27,18,9]
-		])
-	e = np.where(c==np.max(c))
-	print tuple((e[0][0],e[1][0]))
+	with open('data/jsons/0.json', 'r') as jf:
+		bj = json.load(jf)
+	anchor = gav_anchor()
+	res = bbox_2_label(raw_shape=(1498,955), input_shape=(640,480), bbox_json=bj, anchor=anchor, num_class=NUM_CLASS, downscale=16)
+	print res.shape
+	res = res.reshape((40*30, 33))
+	for e in res:
+		if e[4]>0:
+			print [round(k,3) for k in e]
+	print '-------------------------------------------------------'
